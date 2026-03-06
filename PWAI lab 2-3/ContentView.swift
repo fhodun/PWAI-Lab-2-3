@@ -13,17 +13,19 @@ struct ContentView: View {
     @Query private var persons: [Person]
     
     @State private var showAddPersonForm = false
-    @State private var newFirstName = ""
-    @State private var newLastName = ""
-    @State private var newBirthDate = Calendar.current.date(byAdding: .year, value: -20, to: Date()) ?? Date()
-    @State private var newCity = ""
-
+    @State private var editingPerson: Person?
+    
     var body: some View {
         NavigationSplitView {
             List {
                 ForEach(persons) { person in
                     NavigationLink {
-                        PersonDetailView(person: person)
+                        PersonDetailView(
+                            person: person,
+                            onEdit: {
+                                editingPerson = person
+                            }
+                        )
                     } label: {
                         PersonRowView(person: person)
                     }
@@ -39,63 +41,16 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showAddPersonForm) {
-                NavigationStack {
-                    VStack{
-                        Form {
-                            TextField("First Name", text: $newFirstName)
-                            TextField("Last Name", text: $newLastName)
-                            DatePicker("Birth Date", selection: $newBirthDate, displayedComponents: .date)
-                            TextField("City", text: $newCity)
-                        }
-                    }
-                    .padding()
-                    .navigationTitle("Add Person")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { showAddPersonForm = false }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Save") {
-                                addPerson()
-                                showAddPersonForm = false
-                            }
-                            .disabled(newFirstName.isEmpty || newLastName.isEmpty || newCity.isEmpty)
-                        }
-                        ToolbarItem() {
-                            Button("Save modeless") {
-                                addPerson()
-                            }
-                            .disabled(newFirstName.isEmpty || newLastName.isEmpty || newCity.isEmpty)
-                        }
-                    }
-                }
+                PersonFormView(person: nil)
+            }
+            .sheet(item: $editingPerson) { person in
+                PersonFormView(person: person)
             }
         } detail: {
             Text("Select a person")
         }
     }
     
-    private func resetForm() {
-        newFirstName = ""
-        newLastName = ""
-        newBirthDate = Calendar.current.date(byAdding: .year, value: -20, to: Date()) ?? Date()
-        newCity = ""
-    }
-    
-    private func addPerson() {
-        withAnimation {
-            let newItem = Person(
-                first_name: newFirstName,
-                last_name: newLastName,
-                birth_date: newBirthDate,
-                city: newCity,
-                timestamp: Date()
-            )
-            modelContext.insert(newItem)
-            resetForm()
-        }
-    }
-
     private func deletePersons(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
@@ -131,13 +86,14 @@ private struct PersonRowView: View {
 
 private struct PersonDetailView: View {
     let person: Person
-
+    let onEdit: () -> Void
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(person.first_name) \(person.last_name)")
                 .font(.largeTitle)
                 .bold()
-
+            
             VStack(alignment: .leading, spacing: 6) {
                 Label(person.city, systemImage: "building.2")
                 Label(person.birth_date.formatted(date: .long, time: .omitted), systemImage: "calendar")
@@ -145,11 +101,130 @@ private struct PersonDetailView: View {
                     .foregroundStyle(.secondary)
             }
             .font(.title3)
-
+            
             Spacer()
         }
         .padding()
         .navigationTitle("Person")
+        .toolbar {
+            ToolbarItem {
+                Button("Edit") {
+                    onEdit()
+                }
+            }
+        }
+    }
+}
+
+private struct PersonFormView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    
+    let person: Person?
+    
+    @State private var firstName: String
+    @State private var lastName: String
+    @State private var birthDate: Date
+    @State private var city: String
+    
+    init(person: Person?) {
+        self.person = person
+        
+        _firstName = State(initialValue: person?.first_name ?? "")
+        _lastName = State(initialValue: person?.last_name ?? "")
+        _birthDate = State(
+            initialValue: person?.birth_date
+            ?? Calendar.current.date(byAdding: .year, value: -20, to: Date())
+            ?? Date()
+        )
+        _city = State(initialValue: person?.city ?? "")
+    }
+    
+    private var isEditing: Bool {
+        person != nil
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("First Name", text: $firstName)
+                TextField("Last Name", text: $lastName)
+                DatePicker("Birth Date", selection: $birthDate, displayedComponents: .date)
+                TextField("City", text: $city)
+            }
+            .padding()
+            .navigationTitle(isEditing ? "Edit Person" : "Add Person")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        savePersonAndClose()
+                    }
+                    .disabled(isFormInvalid)
+                }
+                
+                if !isEditing {
+                    ToolbarItem {
+                        Button("Save modeless") {
+                            savePersonAndKeepOpen()
+                        }
+                        .disabled(isFormInvalid)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var isFormInvalid: Bool {
+        firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    private func savePersonAndClose() {
+        savePerson()
+        dismiss()
+    }
+    
+    private func savePersonAndKeepOpen() {
+        savePerson()
+        resetForm()
+    }
+    
+    private func savePerson() {
+        if let person {
+            person.first_name = firstName
+            person.last_name = lastName
+            person.birth_date = birthDate
+            person.city = city
+        } else {
+            let newPerson = Person(
+                first_name: firstName,
+                last_name: lastName,
+                birth_date: birthDate,
+                city: city,
+                timestamp: Date()
+            )
+            modelContext.insert(newPerson)
+        }
+        
+        do {
+            try modelContext.save()
+        } catch {
+            print("Failed to save person: \(error)")
+        }
+    }
+    
+    private func resetForm() {
+        firstName = ""
+        lastName = ""
+        birthDate = Calendar.current.date(byAdding: .year, value: -20, to: Date()) ?? Date()
+        city = ""
     }
 }
 
