@@ -28,5 +28,11 @@ struct PWAI_lab_2_3App: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+
+        Window("Add Person", id: "modeless-add-person") {
+            PersonFormView(mode: .modelessAdd)
+        }
+        .modelContainer(sharedModelContainer)
+        .defaultSize(width: 420, height: 260)
     }
 }
