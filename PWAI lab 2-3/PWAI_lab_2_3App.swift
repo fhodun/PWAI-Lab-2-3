@@ -28,5 +28,11 @@ struct PWAI_lab_2_3App: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+        
+        WindowGroup("Add Person", id: "add-person") {
+            AddPersonWindowView()
+        }
+        .modelContainer(sharedModelContainer)
+        .defaultSize(width: 420, height: 300)
     }
 }
